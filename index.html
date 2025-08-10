@@ -474,6 +474,21 @@
             align-items: center;
         }
 
+        #controls-info {
+            margin-top: 20px;
+            color: #a0a0a0;
+            font-size: 14px;
+            line-height: 1.6;
+            text-align: center;
+        }
+        #controls-info p {
+            margin: 0;
+        }
+        #controls-info strong {
+            color: #fff;
+            font-weight: 600;
+        }
+
     </style>
 </head>
 <body>
@@ -520,17 +535,19 @@
     </div>
     <div id="game-wrapper" style="display: none;">
             <p id="goals-to-win-display"></p>
-            <div id="game-container">
-                
-        <div id="turn-indicator">
-            <div class="timer-bar"></div>
-            <span class="turn-text"></span>
-        </div>
-        <canvas height="1080" id="gameCanvas" width="1800"></canvas>
-        <div id="countdown-display"></div>
-        <div id="goal-display">GOAL!</div>
-        <div id="score-display"></div>
-    </div>
+            <div id="game-container">   
+                <div id="turn-indicator">
+                    <div class="timer-bar"></div>
+                    <span class="turn-text"></span>
+                </div>
+                <canvas height="1080" id="gameCanvas" width="1800"></canvas>
+                <div id="countdown-display"></div>
+                <div id="goal-display">GOAL!</div>
+                <div id="score-display"></div>
+            </div>
+            <div id="controls-info">
+                <p><strong>Click and drag to aim | Press [Space] to cancel aim.</strong> </p>
+            </div>
     </div>
 
     <div id="victory-screen">
@@ -623,7 +640,39 @@
     const gameWrapper = document.getElementById('game-wrapper');
 
     function initializePeer() {
-        peer = new Peer();
+
+        const webrtcConfig = {
+        iceServers: [
+            {
+                urls: "stun:stun.relay.metered.ca:80",
+            },
+            {
+                urls: "turn:standard.relay.metered.ca:80",
+                username: "2974d7f318ad9202bbb673da",
+                credential: "MDLWNLAVsijzhLVO",
+            },
+            {
+                urls: "turn:standard.relay.metered.ca:80?transport=tcp",
+                username: "2974d7f318ad9202bbb673da",
+                credential: "MDLWNLAVsijzhLVO",
+            },
+            {
+                urls: "turn:standard.relay.metered.ca:443",
+                username: "2974d7f318ad9202bbb673da",
+                credential: "MDLWNLAVsijzhLVO",
+            },
+            {
+                urls: "turns:standard.relay.metered.ca:443?transport=tcp",
+                username: "2974d7f318ad9202bbb673da",
+                credential: "MDLWNLAVsijzhLVO",
+            },
+        ]
+        };
+
+        peer = new Peer(undefined, {
+            config: webrtcConfig
+        });
+
         peer.on('open', id => {
             myPeerId = id;
             console.log('My Peer ID is: ' + myPeerId);
@@ -723,6 +772,7 @@
                 break;
 
             case 'turn_change':
+                cancelAiming();
                 currentPlayerTurn = data.nextTurn;
                 allPiecesStopped = true;
                 turnChangeSent = true;
@@ -730,6 +780,7 @@
                 break;
 
             case 'timeout':
+                cancelAiming();
                 currentPlayerTurn = data.nextTurn;
                 startTurnTimer();
                 break;
@@ -1011,11 +1062,16 @@
         resetBall();
         gameStarted = false;
         allPiecesStopped = true;
+        turnChangeSent = true;
 
         if (lastGoalScorer === null) {
             currentPlayerTurn = 0;
         } else {
-            currentPlayerTurn = lastGoalScorer === 0 ? 1 : 0;
+            if (lastGoalScorer === 0) {
+                currentPlayerTurn = 1;
+            } else {
+                currentPlayerTurn = 0;
+            }
         }
     }
 
@@ -1049,6 +1105,12 @@
                 selected = p;
                 break;
             }
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === ' ' && dragging) {
+            cancelAiming();
         }
     });
 
@@ -1156,6 +1218,13 @@
 
     function hideVictoryScreen() {
         victoryScreen.classList.remove('active');
+    }
+
+    function cancelAiming() {
+        dragging = false;
+        dragStart = null;
+        selected = null;
+        dragVector = null;
     }
 
     function resolveCollision(p1, p2) {
@@ -1276,7 +1345,7 @@
             if (isHost) {
 
                 if (gameMode === 'turn-based') {
-                    if (turnTime <= 0 && !dragging) { 
+                    if (turnTime <= 0 && allPiecesStopped) {
                         turnTime = 0; 
                         const nextTurn = currentPlayerTurn === 0 ? 1 : 0; 
                         const timeoutData = { type: 'timeout', nextTurn: nextTurn }; 
@@ -1739,4 +1808,3 @@
     </script>
 </body>
 </html>
-
