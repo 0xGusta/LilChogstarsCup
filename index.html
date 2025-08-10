@@ -145,6 +145,38 @@
             box-shadow: 0 6px 20px rgba(138, 43, 226, 0.4);
         }
 
+        .setting-group {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+            color: #ccc;
+            font-weight: 500;
+        }
+
+        .setting-group label {
+            font-size: 16px;
+        }
+
+        .setting-group input[type="number"] {
+            width: 70px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background-color: #222;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .setting-group input:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
         #join-room-btn, #copy-id-btn {
             background-color: #333;
             border: 1px solid #555;
@@ -165,10 +197,19 @@
         #waiting-status {
             color: #44ffff;
         }
+
+        #goals-to-win-display {
+            color: #ccc;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
         
         #game-container {
             position: relative;
-            display: none;
             width: 50vw;
             max-width: 1800px;
             aspect-ratio: 1800 / 1080;
@@ -427,6 +468,12 @@
             color: #8a2be2;
         }
 
+        #game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
     </style>
 </head>
 <body>
@@ -458,6 +505,12 @@
                 <input type="text" id="room-id-display" readonly>
                 <button id="copy-id-btn" class="lobby-button">Copy</button>
             </div>
+
+            <div class="setting-group">
+                <label for="goals-to-win-input">Goals to Win:</label>
+                <input type="number" id="goals-to-win-input" value="5" min="1" max="99">
+            </div>
+            
             <p id="waiting-status">Waiting for opponent to connect...</p>
             
             <button id="start-game-btn" class="lobby-button primary" disabled style="margin-top: 15px;">Start Game</button>
@@ -465,8 +518,10 @@
         
         <p id="lobby-status"></p>
     </div>
-
-    <div id="game-container" style="display: none;">
+    <div id="game-wrapper" style="display: none;">
+            <p id="goals-to-win-display"></p>
+            <div id="game-container">
+                
         <div id="turn-indicator">
             <div class="timer-bar"></div>
             <span class="turn-text"></span>
@@ -475,6 +530,7 @@
         <div id="countdown-display"></div>
         <div id="goal-display">GOAL!</div>
         <div id="score-display"></div>
+    </div>
     </div>
 
     <div id="victory-screen">
@@ -563,6 +619,8 @@
     const realTimeModeCheckbox = document.getElementById('real-time-mode-checkbox');
     const startGameBtn = document.getElementById('start-game-btn');
     const gameModeSelector = document.querySelector('.game-mode-selector');
+    const goalsToWinDisplay = document.getElementById('goals-to-win-display');
+    const gameWrapper = document.getElementById('game-wrapper');
 
     function initializePeer() {
         peer = new Peer();
@@ -585,6 +643,7 @@
                 startGameBtn.disabled = false;
                 
                 realTimeModeCheckbox.disabled = true;
+                document.getElementById('goals-to-win-input').disabled = true;
             });
         });
 
@@ -633,6 +692,9 @@
         switch (data.type) {
             case 'start_signal':
                 gameMode = data.mode;
+                if (data.goals) {
+                    maxGoals = data.goals;
+                }
                 startGame();
                 break;
 
@@ -735,9 +797,22 @@
                 updateScoreDisplay();
                 initPieces();
                 startGameCountdown();
+                
                 if (isHost) {
+
                     lastPongReceived = Date.now();
                     heartbeatInterval = setInterval(checkConnection, PING_INTERVAL);
+                    gameStateInterval = setInterval(() => {
+                        if (!gameStarted || !conn || !conn.open) return;
+                        const gameState = {
+                            type: 'game_state_update',
+                            pieces: pieces.map(p => ({ x: p.x, y: p.y })),
+                            ball: { x: ball.x, y: ball.y, angle: ball.angle },
+                            shadows: shadows,
+                            ballShadows: ballShadows
+                        };
+                        sendData(gameState);
+                    }, SYNC_RATE);
                 }
                 break;
         }
@@ -791,7 +866,10 @@
         if (gameHasStarted) return;
         gameHasStarted = true;
         lobbyContainer.style.display = 'none';
-        gameContainer.style.display = 'inline-block';
+        gameWrapper.style.display = 'flex';
+        
+        goalsToWinDisplay.textContent = `First to ${maxGoals} goals wins!`;
+        goalsToWinDisplay.style.opacity = '1';
         
         if (gameMode === 'real-time') {
             setupRealTimeIndicator();
@@ -849,7 +927,7 @@
     let ball = { x: 0, y: 0, vx: 0, vy: 0, radius: radiusBall, color: 'white', angle: 0, angularVelocity: 0, mass: 1 };
     let scoreRed = 0;
     let scoreBlue = 0;
-    const maxGoals = 5;
+    let maxGoals = 5;
     const goalWidth = 10;
     const originalGoalHeight = 300;
     const goalHeight = originalGoalHeight * 1.10;
@@ -1648,11 +1726,14 @@
         });
 
     startGameBtn.addEventListener('click', () => {
-        gameMode = realTimeModeCheckbox.checked ? 'real-time' : 'turn-based';
-        
-        sendData({ type: 'start_signal', mode: gameMode });
-        startGame();
-    });
+    gameMode = realTimeModeCheckbox.checked ? 'real-time' : 'turn-based';
+
+    const goalsToWin = parseInt(document.getElementById('goals-to-win-input').value, 10) || 5;
+    maxGoals = goalsToWin;
+
+    sendData({ type: 'start_signal', mode: gameMode, goals: goalsToWin });
+    startGame();
+});
 
 });
     </script>
