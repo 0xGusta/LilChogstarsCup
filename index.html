@@ -722,43 +722,35 @@ let clientHeartbeatInterval;
 
     function checkConnection() {
         if (!isHost || !conn) return;
+
         if (Date.now() - lastPongReceived > HEARTBEAT_TIMEOUT) {
-            console.log('Heartbeat timeout');
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-            if (gameStateInterval) clearInterval(gameStateInterval);
-            if (conn) conn.close();
+            console.log('Heartbeat timeout: Client not responding.');
+            handleDisconnect();
             return;
         }
+        
         sendData({ type: 'ping' });
     }
 
+    const handleDisconnect = () => {
+        if (!conn) { return; }
+        
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        if (gameStateInterval) clearInterval(gameStateInterval);
+        if (clientHeartbeatInterval) clearInterval(clientHeartbeatInterval);
+        conn = null; 
+        
+        alert("The other player has disconnected. The match is over.");
+        location.reload();
+    };
+
     function setupConnectionHandlers() {
-        const handleDisconnect = () => {
-            if (!conn) { return; }
-            conn = null;
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-            if (gameStateInterval) clearInterval(gameStateInterval);
-            if (clientHeartbeatInterval) clearInterval(clientHeartbeatInterval);
-            alert("The other player has disconnected. The match is over.");
-            location.reload();
-        };
         conn.on('data', handleReceivedData);
         conn.on('close', handleDisconnect);
         conn.on('error', (err) => {
             console.error('PeerJS connection error:', err);
             handleDisconnect();
         });
-
-        if (!isHost) {
-            lastPingReceived = Date.now();
-            clientHeartbeatInterval = setInterval(() => {
-                if (Date.now() - lastPingReceived > HEARTBEAT_TIMEOUT) {
-                    console.log('Host connection timed out.');
-                    handleDisconnect();
-                }
-            }, PING_INTERVAL);
-        }
-
     }
 
     function sendData(data) {
@@ -869,6 +861,7 @@ let clientHeartbeatInterval;
                     if (gameMode === 'turn-based') turnIndicator.classList.remove('active');
                     if (heartbeatInterval) clearInterval(heartbeatInterval);
                     if (gameStateInterval) clearInterval(gameStateInterval);
+                    if (clientHeartbeatInterval) clearInterval(clientHeartbeatInterval);
                 } else {
                     startGameCountdown();
                 }
@@ -897,6 +890,15 @@ let clientHeartbeatInterval;
                         };
                         sendData(gameState);
                     }, SYNC_RATE);
+                } else {
+                    lastPingReceived = Date.now();
+                    clientHeartbeatInterval = setInterval(() => {
+                        if (Date.now() - lastPingReceived > HEARTBEAT_TIMEOUT) {
+                            console.log('Host connection timed out during game.');
+                            handleDisconnect();
+                        }
+                    }, PING_INTERVAL);
+
                 }
                 break;
         }
@@ -974,6 +976,15 @@ let clientHeartbeatInterval;
                 };
                 sendData(gameState);
             }, SYNC_RATE);
+        } else {
+            lastPingReceived = Date.now();
+            clientHeartbeatInterval = setInterval(() => {
+                if (Date.now() - lastPingReceived > HEARTBEAT_TIMEOUT) {
+                    console.log('Host connection timed out during game.');
+                    handleDisconnect();
+                }
+            }, PING_INTERVAL);
+
         }
 
         loadAllImages();
