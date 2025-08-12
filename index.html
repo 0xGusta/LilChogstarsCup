@@ -639,6 +639,8 @@
     let heartbeatInterval;
     let gameStateInterval; 
     let lastPongReceived = 0;
+    let lastPingReceived = 0;
+let clientHeartbeatInterval;
     const HEARTBEAT_TIMEOUT = 5000;
     const PING_INTERVAL = 2000;
     const SYNC_RATE = 50; 
@@ -736,6 +738,7 @@
             conn = null;
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             if (gameStateInterval) clearInterval(gameStateInterval);
+            if (clientHeartbeatInterval) clearInterval(clientHeartbeatInterval);
             alert("The other player has disconnected. The match is over.");
             location.reload();
         };
@@ -745,6 +748,17 @@
             console.error('PeerJS connection error:', err);
             handleDisconnect();
         });
+
+        if (!isHost) {
+            lastPingReceived = Date.now();
+            clientHeartbeatInterval = setInterval(() => {
+                if (Date.now() - lastPingReceived > HEARTBEAT_TIMEOUT) {
+                    console.log('Host connection timed out.');
+                    handleDisconnect();
+                }
+            }, PING_INTERVAL);
+        }
+
     }
 
     function sendData(data) {
@@ -764,8 +778,11 @@
                 break;
 
             case 'ping':
-                if (!isHost) sendData({ type: 'pong' });
-                break;
+            if (!isHost) {
+                lastPingReceived = Date.now();
+                sendData({ type: 'pong' });
+            }
+            break;
 
             case 'pong':
                 if (isHost) lastPongReceived = Date.now();
@@ -1824,4 +1841,3 @@
     </script>
 </body>
 </html>
-
